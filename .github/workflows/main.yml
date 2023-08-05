@@ -1,0 +1,92 @@
+name: Build -> Test -> Deploy
+env: 
+  # Set the Project Name Here
+  PROJECT_NAME: BlazorWasmDeploy
+on:
+  push:
+    branches:
+    - main
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        dotnet-version: [ '6.0.x' ]
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup dotnet
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: ${{ matrix.dotnet-version }}
+
+      - name: Display dotnet version
+        run: dotnet --version
+
+      - name: Clean
+        run: dotnet clean
+
+      - name: Install dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+  test:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup dotnet
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: ${{ matrix.dotnet-version }}
+
+      - name: Display dotnet version
+        run: dotnet --version
+
+      - name: Test
+        run: dotnet test --logger trx --results-directory "TestResults-${{ matrix.dotnet-version }}"
+
+  deploy-to-github-pages:
+    needs: [build, test]
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Setup .NET Core SDK
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: 6.0.x
+
+    - name: Install .NET WASM Build Tools
+      run: dotnet workload install wasm-tools
+
+    - name: Publish .NET Core Project
+      run: dotnet publish ${PROJECT_NAME}/${PROJECT_NAME}.csproj -c:Release -p:GHPages=true -o dist/Web --nologo
+
+    # changes the base-tag in index.html from '/' to 'ProjectName' to match GitHub Pages repository subdirectory
+    - name: Change base-tag in index.html from / to ProjectName
+      run: sed -i 's/<base href="\/" \/>/<base href="\/%PROJECT_NAME%\/" \/>/g' dist/Web/wwwroot/index.html
+
+    # Replace %PROJECT_NAME% in index.html with the Variable set above to match GitHub Pages repository subdirectory
+    - name: Change base-tag in index.html from / to ProjectName
+      run: sed -i "s/%PROJECT_NAME%/$PROJECT_NAME/g" dist/Web/wwwroot/index.html
+
+    # copy index.html to 404.html to serve the same file when a file is not found
+    - name: copy index.html to 404.html
+      run: cp dist/Web/wwwroot/index.html dist/Web/wwwroot/404.html
+
+    # Add .nojekyll so _framework will get loaded
+    - name: Add .nojekyll
+      run: touch dist/Web/wwwroot/.nojekyll
+
+    - name: Commit wwwroot to GitHub Pages
+      uses: JamesIves/github-pages-deploy-action@3.7.1
+      with:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        BRANCH: gh-pages
+        FOLDER: dist/Web/wwwroot

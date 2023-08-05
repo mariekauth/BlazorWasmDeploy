@@ -1,5 +1,6 @@
-# BlazorWasmDeploy
 # Blazor WASM Deploy
+This will deploy the code to GitHub pages as a static web app
+
 - Create
 - Test (with mstest and bunit)
 - Deploy
